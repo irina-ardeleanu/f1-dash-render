@@ -24,18 +24,8 @@ all_drivers = (
     .reset_index()
 )
 all_drivers['full_name'] = all_drivers['forename'] + ' ' + all_drivers['surname']
-all_drivers = all_drivers.sort_values(by='points', ascending=False)
-
-# === Top 10 Piloți ===
-fig_top_drivers = px.bar(
-    all_drivers.head(10),
-    x='full_name',
-    y='points',
-    title='🏎️ Piloți All-Time',
-    labels={'full_name': 'Pilot', 'points': 'Puncte'},
-    color='points',
-    color_continuous_scale='Reds'
-)
+all_drivers = all_drivers.sort_values(by='points', ascending=False).reset_index(drop=True)
+all_drivers['rank'] = all_drivers.index + 1  # Clasamentul (locul)
 
 # === App layout ===
 app = dash.Dash(__name__)
@@ -44,10 +34,7 @@ server = app.server
 app.layout = html.Div([
     html.H1("F1 Dashboard Interactiv", style={'textAlign': 'center'}),
 
-    dcc.Graph(
-        id='pilot-chart',
-        figure=fig_top_drivers
-    ),
+    dcc.Graph(id='pilot-chart'),
 
     html.Div([
         html.Label("Selectează un pilot:"),
@@ -67,16 +54,38 @@ app.layout = html.Div([
 
 # === Callback ===
 @app.callback(
+    Output('pilot-chart', 'figure'),
     Output('echipe-chart', 'figure'),
     Output('echipe-titlu', 'children'),
     Input('pilot-dropdown', 'value'),
     Input('pilot-chart', 'clickData')
 )
-def update_echipe_chart(dropdown_value, clickData):
+def update_charts(dropdown_value, clickData):
     selected_name = dropdown_value
     if not selected_name and clickData:
         selected_name = clickData['points'][0]['x']
 
+    # === Grafic Piloți ===
+    top_drivers = all_drivers.head(10).copy()
+    if selected_name and selected_name not in top_drivers['full_name'].values:
+        selected_driver = all_drivers[all_drivers['full_name'] == selected_name]
+        top_drivers = pd.concat([top_drivers, selected_driver])
+
+    # Marcăm dacă pilotul e selectat
+    top_drivers['selected'] = top_drivers['full_name'].apply(lambda x: 'Selectat' if x == selected_name else 'Alții')
+
+    fig_piloti = px.bar(
+        top_drivers,
+        x='full_name',
+        y='points',
+        color='selected',
+        color_discrete_map={'Selectat': 'green', 'Alții': 'red'},
+        labels={'full_name': 'Pilot', 'points': 'Puncte'},
+        title='🏎️ Piloți All-Time',
+        hover_data=['rank', 'points']
+    )
+
+    # === Grafic Echipe ===
     if not selected_name:
         top_teams = (
             merged.groupby('constructor_name')['points']
@@ -85,7 +94,7 @@ def update_echipe_chart(dropdown_value, clickData):
             .sort_values(by='points', ascending=False)
             .head(10)
         )
-        fig = px.bar(
+        fig_teams = px.bar(
             top_teams,
             x='constructor_name',
             y='points',
@@ -94,11 +103,11 @@ def update_echipe_chart(dropdown_value, clickData):
             color='points',
             color_continuous_scale='Blues'
         )
-        return fig, "🔧 Top 10 Echipe All-Time"
+        return fig_piloti, fig_teams, "🔧 Top 10 Echipe All-Time"
 
     driver_row = all_drivers[all_drivers['full_name'] == selected_name]
     if driver_row.empty:
-        return px.bar(title="Nu există date pentru acest pilot"), "❌ Date lipsă pentru acest pilot"
+        return fig_piloti, px.bar(title="Nu există date pentru acest pilot"), "❌ Date lipsă pentru acest pilot"
 
     driver_id = driver_row.iloc[0]['driverId']
 
@@ -110,7 +119,7 @@ def update_echipe_chart(dropdown_value, clickData):
         .sort_values(by='points', ascending=False)
     )
 
-    fig = px.bar(
+    fig_teams = px.bar(
         echipe,
         x='constructor_name',
         y='points',
@@ -119,7 +128,13 @@ def update_echipe_chart(dropdown_value, clickData):
         color='points',
         color_continuous_scale='Blues'
     )
-    return fig, f"🔧 Echipele pilotului {selected_name}"
+
+    # Titlu detaliat cu loc și puncte
+    rank = driver_row.iloc[0]['rank']
+    points = driver_row.iloc[0]['points']
+    titlu = f"🔧 Echipele pilotului {selected_name} (Loc {rank}, {points} puncte)"
+
+    return fig_piloti, fig_teams, titlu
 
 # === Run Server ===
 if __name__ == '__main__':
