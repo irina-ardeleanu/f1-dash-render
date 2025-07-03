@@ -35,6 +35,7 @@ fig_top_drivers = px.bar(
 
 # === Dash App ===
 app = dash.Dash(__name__)
+server = app.server
 app.layout = html.Div([
     html.H1("F1 Dashboard Interactiv", style={'textAlign': 'center'}),
     
