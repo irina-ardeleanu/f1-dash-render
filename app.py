@@ -9,6 +9,10 @@ constructors = pd.read_csv("data/constructors.csv")
 results = pd.read_csv("data/results.csv")
 races = pd.read_csv("data/races.csv")
 
+# === Redenumire coloane pentru claritate ===
+constructors = constructors.rename(columns={'name': 'constructor_name'})
+races = races.rename(columns={'name': 'race_name'})  # opțional, dacă vrei să eviți coliziuni
+
 # === Merge pentru analiză ===
 merged = results.merge(drivers, on='driverId', how='left') \
                 .merge(constructors, on='constructorId', how='left') \
@@ -69,7 +73,7 @@ def update_echipe_chart(clickData):
 
     echipe = (
         merged[merged['driverId'] == driver_id]
-        .groupby('name')['points']
+        .groupby('constructor_name')['points']
         .sum()
         .reset_index()
         .sort_values(by='points', ascending=False)
@@ -77,10 +81,10 @@ def update_echipe_chart(clickData):
 
     fig = px.bar(
         echipe,
-        x='name',
+        x='constructor_name',
         y='points',
         title=f"🔧 Echipele pilotului {selected_name}",
-        labels={'name': 'Echipă', 'points': 'Puncte'},
+        labels={'constructor_name': 'Echipă', 'points': 'Puncte'},
         color='points',
         color_continuous_scale='Blues'
     )
