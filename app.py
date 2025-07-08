@@ -1,6 +1,8 @@
 import dash
 from dash import dcc, html, Input, Output
 import pandas as pd
+import requests
+from dash import dash_table
 import plotly.express as px
 
 # === Load Data ===
@@ -26,6 +28,33 @@ all_drivers = (
 all_drivers['full_name'] = all_drivers['forename'] + ' ' + all_drivers['surname']
 all_drivers = all_drivers.sort_values(by='points', ascending=False).reset_index(drop=True)
 all_drivers['rank'] = all_drivers.index + 1  # Clasamentul (locul)
+def get_recent_races_with_results(season="2024", limit=5):
+    url = f"https://ergast.com/api/f1/{season}/results.json?limit={limit}&offset=0"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return pd.DataFrame()
+
+    data = response.json()
+    races = data['MRData']['RaceTable']['Races']
+    rows = []
+
+    for race in races:
+        if not race['Results']:
+            continue
+
+        winner = race['Results'][0]['Driver']
+        team = race['Results'][0]['Constructor']['name']
+
+        rows.append({
+            "race_name": race['raceName'],
+            "circuit": race['Circuit']['circuitName'],
+            "location": f"{race['Circuit']['Location']['locality']}, {race['Circuit']['Location']['country']}",
+            "date": race['date'],
+            "winner": f"{winner['givenName']} {winner['familyName']}",
+            "team": team
+        })
+
+    return pd.DataFrame(rows)
 
 # === App layout ===
 app = dash.Dash(__name__)
@@ -49,6 +78,15 @@ app.layout = html.Div([
     html.Div([
         html.H3(id='echipe-titlu'),
         dcc.Graph(id='echipe-chart')
+        html.Div([
+        html.H2("🏁 Ultimele curse – Sezon curent"),
+        html.Button("Încarcă curse recente", id="load-races-btn", n_clicks=0),
+        dcc.Loading(
+            id="loading-races",
+            children=html.Div(id="recent-races-table"),
+            type="circle"
+        )
+    ], style={"marginTop": "40px"})
     ])
 ])
 
@@ -60,6 +98,24 @@ app.layout = html.Div([
     Input('pilot-dropdown', 'value'),
     Input('pilot-chart', 'clickData')
 )
+@app.callback(
+    Output("recent-races-table", "children"),
+    Input("load-races-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def load_recent_races(n_clicks):
+    races_df = get_recent_races_with_results()
+    if races_df.empty:
+        return html.Div("❌ Nu s-au putut încărca cursele.")
+
+    return dash_table.DataTable(
+        data=races_df.to_dict('records'),
+        columns=[{"name": i, "id": i} for i in races_df.columns],
+        style_table={'overflowX': 'auto'},
+        style_cell={'textAlign': 'left', 'padding': '5px'},
+        style_header={'fontWeight': 'bold'},
+        page_size=10
+    )
 def update_charts(dropdown_value, clickData):
     selected_name = dropdown_value
     if not selected_name and clickData:
