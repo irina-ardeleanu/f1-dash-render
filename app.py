@@ -77,7 +77,7 @@ app.layout = html.Div([
 
     html.Div([
         html.H3(id='echipe-titlu'),
-        dcc.Graph(id='echipe-chart')
+        dcc.Graph(id='echipe-chart'),
         html.Div([
         html.H2("🏁 Ultimele curse – Sezon curent"),
         html.Button("Încarcă curse recente", id="load-races-btn", n_clicks=0),
@@ -98,15 +98,10 @@ app.layout = html.Div([
     Input('pilot-dropdown', 'value'),
     Input('pilot-chart', 'clickData')
 )
-@app.callback(
-    Output("recent-races-table", "children"),
-    Input("load-races-btn", "n_clicks"),
-    prevent_initial_call=True
-)
-def load_recent_races(n_clicks):
-    races_df = get_recent_races_with_results()
-    if races_df.empty:
-        return html.Div("❌ Nu s-au putut încărca cursele.")
+def update_charts(dropdown_value, clickData):
+    selected_name = dropdown_value
+    if not selected_name and clickData:
+        selected_name = clickData['points'][0]['x']
 
     return dash_table.DataTable(
         data=races_df.to_dict('records'),
@@ -116,10 +111,6 @@ def load_recent_races(n_clicks):
         style_header={'fontWeight': 'bold'},
         page_size=10
     )
-def update_charts(dropdown_value, clickData):
-    selected_name = dropdown_value
-    if not selected_name and clickData:
-        selected_name = clickData['points'][0]['x']
 
     # === Grafic Piloți ===
     top_drivers = all_drivers.head(10).copy()
@@ -191,6 +182,24 @@ def update_charts(dropdown_value, clickData):
     titlu = f"🔧 Echipele pilotului {selected_name} (Loc {rank}, {points} puncte)"
 
     return fig_piloti, fig_teams, titlu
+@app.callback(
+    Output("recent-races-table", "children"),
+    Input("load-races-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def load_recent_races(n_clicks):
+    races_df = get_recent_races_with_results()
+    if races_df.empty:
+        return html.Div("❌ Nu s-au putut încărca cursele.")
+
+    return dash_table.DataTable(
+        data=races_df.to_dict('records'),
+        columns=[{"name": i, "id": i} for i in races_df.columns],
+        style_table={'overflowX': 'auto'},
+        style_cell={'textAlign': 'left', 'padding': '5px'},
+        style_header={'fontWeight': 'bold'},
+        page_size=10
+    )
 
 # === Run Server ===
 if __name__ == '__main__':
