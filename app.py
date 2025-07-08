@@ -5,21 +5,18 @@ import requests
 from dash import dash_table
 import plotly.express as px
 
-# === Load Data ===
+# === Load Data (all-time) ===
 drivers = pd.read_csv("data/drivers.csv")
 constructors = pd.read_csv("data/constructors.csv")
 results = pd.read_csv("data/results.csv")
 races = pd.read_csv("data/races.csv")
 
-# === Pregătire date ===
 constructors.rename(columns={'name': 'constructor_name'}, inplace=True)
 
-# === Merge complet pentru analiză ===
 merged = results.merge(drivers, on='driverId', how='left') \
                 .merge(constructors, on='constructorId', how='left') \
                 .merge(races, on='raceId', how='left')
 
-# === Toți piloții ===
 all_drivers = (
     merged.groupby(['driverId', 'forename', 'surname'])['points']
     .sum()
@@ -27,7 +24,9 @@ all_drivers = (
 )
 all_drivers['full_name'] = all_drivers['forename'] + ' ' + all_drivers['surname']
 all_drivers = all_drivers.sort_values(by='points', ascending=False).reset_index(drop=True)
-all_drivers['rank'] = all_drivers.index + 1  # Clasamentul (locul)
+all_drivers['rank'] = all_drivers.index + 1
+
+# === Funcție API: ultimele curse ===
 def get_recent_races_with_results(season="2024", limit=5):
     url = f"https://ergast.com/api/f1/{season}/results.json?limit={limit}&offset=0"
     response = requests.get(url)
@@ -56,7 +55,7 @@ def get_recent_races_with_results(season="2024", limit=5):
 
     return pd.DataFrame(rows)
 
-# === App layout ===
+# === App ===
 app = dash.Dash(__name__)
 server = app.server
 
@@ -78,7 +77,9 @@ app.layout = html.Div([
     html.Div([
         html.H3(id='echipe-titlu'),
         dcc.Graph(id='echipe-chart'),
-        html.Div([
+    ]),
+
+    html.Div([
         html.H2("🏁 Ultimele curse – Sezon curent"),
         html.Button("Încarcă curse recente", id="load-races-btn", n_clicks=0),
         dcc.Loading(
@@ -87,10 +88,9 @@ app.layout = html.Div([
             type="circle"
         )
     ], style={"marginTop": "40px"})
-    ])
 ])
 
-# === Callback ===
+# === Callback 1: Pilot & echipe (CSV) ===
 @app.callback(
     Output('pilot-chart', 'figure'),
     Output('echipe-chart', 'figure'),
@@ -103,22 +103,11 @@ def update_charts(dropdown_value, clickData):
     if not selected_name and clickData:
         selected_name = clickData['points'][0]['x']
 
-    return dash_table.DataTable(
-        data=races_df.to_dict('records'),
-        columns=[{"name": i, "id": i} for i in races_df.columns],
-        style_table={'overflowX': 'auto'},
-        style_cell={'textAlign': 'left', 'padding': '5px'},
-        style_header={'fontWeight': 'bold'},
-        page_size=10
-    )
-
-    # === Grafic Piloți ===
     top_drivers = all_drivers.head(10).copy()
     if selected_name and selected_name not in top_drivers['full_name'].values:
         selected_driver = all_drivers[all_drivers['full_name'] == selected_name]
         top_drivers = pd.concat([top_drivers, selected_driver])
 
-    # Marcăm dacă pilotul e selectat
     top_drivers['selected'] = top_drivers['full_name'].apply(lambda x: 'Selectat' if x == selected_name else 'Alții')
 
     fig_piloti = px.bar(
@@ -132,7 +121,6 @@ def update_charts(dropdown_value, clickData):
         hover_data=['rank', 'points']
     )
 
-    # === Grafic Echipe ===
     if not selected_name:
         top_teams = (
             merged.groupby('constructor_name')['points']
@@ -176,12 +164,13 @@ def update_charts(dropdown_value, clickData):
         color_continuous_scale='Blues'
     )
 
-    # Titlu detaliat cu loc și puncte
     rank = driver_row.iloc[0]['rank']
     points = driver_row.iloc[0]['points']
     titlu = f"🔧 Echipele pilotului {selected_name} (Loc {rank}, {points} puncte)"
 
     return fig_piloti, fig_teams, titlu
+
+# === Callback 2: Curse recente din API ===
 @app.callback(
     Output("recent-races-table", "children"),
     Input("load-races-btn", "n_clicks"),
